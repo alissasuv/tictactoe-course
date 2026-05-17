@@ -12,6 +12,7 @@ using game::MoveResult;
 using game::Status;
 
 namespace {
+constexpr int kTimeLimitMs = 45;
 constexpr int kCandidateRadius = 2;
 } // namespace
 
@@ -51,37 +52,35 @@ static bool is_opponent_threat(const State &after, Sign opp, MoveResult r) {
   return false;
 }
 
-std::optional<Point> MyPlayer::find_winning_move(const State &state, Sign player) {
-  const auto &opts = state.get_opts();
-  for (int y = 0; y < opts.rows; ++y) {
-    for (int x = 0; x < opts.cols; ++x) {
-      if (!is_legal(state, x, y))
-        continue;
+static std::optional<Point> scan_tactical_moves(
+    const State &state, Sign player, bool check_draw_on_last_move) {
+  for (const Point &p : generate_candidates(state, 3)) {
       State copy = state;
-      const MoveResult r = copy.process_move(player, x, y);
+    const MoveResult r = copy.process_move(player, p.x, p.y);
       if (game::is_dq(r))
         continue;
       if (is_strong_attack(copy, player, r))
-        return Point{x, y};
-    }
+      return p;
+    if (check_draw_on_last_move && state.get_status() == Status::LAST_MOVE &&
+        player == Sign::O && r == MoveResult::DRAW)
+      return p;
   }
   return std::nullopt;
 }
 
+std::optional<Point> MyPlayer::find_winning_move(const State &state, Sign player) {
+  return scan_tactical_moves(state, player, true);
+}
+
 std::optional<Point> MyPlayer::find_blocking_move(const State &state, Sign me) {
   const Sign opp = opponent(me);
-  const auto &opts = state.get_opts();
-  for (int y = 0; y < opts.rows; ++y) {
-    for (int x = 0; x < opts.cols; ++x) {
-      if (!is_legal(state, x, y))
-        continue;
+  for (const Point &p : generate_candidates(state, 3)) {
       State copy = state;
-      const MoveResult r = copy.process_move(opp, x, y);
+    const MoveResult r = copy.process_move(opp, p.x, p.y);
       if (game::is_dq(r))
         continue;
       if (is_opponent_threat(copy, opp, r))
-        return Point{x, y};
-    }
+      return p;
   }
   return std::nullopt;
 }
@@ -126,17 +125,24 @@ Point MyPlayer::greedy_eval_move(const State &state, Sign me) {
 }
 
 Point MyPlayer::make_move(const State &state) {
+  if (state.get_status() == Status::LAST_MOVE && m_sign == Sign::O) {
+    if (auto mv = find_winning_move(state, Sign::O))
+      return *mv;
+    if (auto mv = find_blocking_move(state, Sign::O))
+      return *mv;
+  }
+
   if (auto mv = find_winning_move(state, m_sign))
     return *mv;
   if (auto mv = find_blocking_move(state, m_sign))
     return *mv;
 
-  const auto deadline = std::chrono::steady_clock::time_point::max();
+  const auto deadline =
+      std::chrono::steady_clock::now() + std::chrono::milliseconds(kTimeLimitMs);
   const SearchResult search = search_best_move(state, m_sign, deadline);
-  if (search.depth_reached > 0)
+  if (is_legal(state, search.move.x, search.move.y))
     return search.move;
-
-  return greedy_eval_move(state, m_sign);
+  return fallback_move(state);
 }
 
 }; // namespace ttt::my_player

@@ -2,6 +2,7 @@
 #include "my_player_eval.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <climits>
 
 namespace ttt::my_player {
@@ -11,7 +12,8 @@ using game::Sign;
 using game::Status;
 
 namespace {
-constexpr int kSearchDepth = 2;
+constexpr int kMaxCandidates = 14;
+constexpr int kMaxDepth = 2;
 } // namespace
 
 static bool is_legal(const State &state, int x, int y) {
@@ -66,6 +68,22 @@ std::vector<Point> generate_candidates(const State &state, int radius) {
   return moves;
 }
 
+static std::vector<Point> limit_candidates(const State &state, Sign me,
+                                         std::vector<Point> moves) {
+  if (static_cast<int>(moves.size()) <= kMaxCandidates)
+    return moves;
+  const Sign side = state.get_current_player();
+  std::sort(moves.begin(), moves.end(), [&](const Point &a, const Point &b) {
+    State sa = state;
+    State sb = state;
+    sa.process_move(side, a.x, a.y);
+    sb.process_move(side, b.x, b.y);
+    return evaluate(sa, me) > evaluate(sb, me);
+  });
+  moves.resize(kMaxCandidates);
+  return moves;
+}
+
 static int terminal_value(const State &state, Sign me) {
   if (state.get_status() == Status::ENDED) {
     const Sign w = state.get_winner();
@@ -78,14 +96,19 @@ static int terminal_value(const State &state, Sign me) {
   return evaluate(state, me);
 }
 
-static int minimax(State state, int depth, int alpha, int beta, Sign me) {
+static int minimax(State state, int depth, int alpha, int beta, Sign me,
+                   std::chrono::steady_clock::time_point deadline, bool *timed_out) {
+  if (std::chrono::steady_clock::now() >= deadline) {
+    *timed_out = true;
+    return evaluate(state, me);
+  }
   if (depth == 0 || state.get_status() == Status::ENDED) {
     return terminal_value(state, me);
   }
 
   const Sign side = state.get_current_player();
   const bool maximizing = (side == me);
-  auto moves = generate_candidates(state, 2);
+  auto moves = limit_candidates(state, me, generate_candidates(state, 2));
   if (moves.empty())
     return evaluate(state, me);
 
@@ -98,7 +121,10 @@ static int minimax(State state, int depth, int alpha, int beta, Sign me) {
         continue;
       const int val = (child.get_status() == Status::ENDED)
                           ? terminal_value(child, me)
-                          : minimax(child, depth - 1, alpha, beta, me);
+                          : minimax(child, depth - 1, alpha, beta, me, deadline,
+                                    timed_out);
+      if (*timed_out)
+        return best == INT_MIN ? val : best;
       best = std::max(best, val);
       alpha = std::max(alpha, best);
       if (beta <= alpha)
@@ -115,7 +141,10 @@ static int minimax(State state, int depth, int alpha, int beta, Sign me) {
       continue;
     const int val = (child.get_status() == Status::ENDED)
                         ? terminal_value(child, me)
-                        : minimax(child, depth - 1, alpha, beta, me);
+                        : minimax(child, depth - 1, alpha, beta, me, deadline,
+                                  timed_out);
+    if (*timed_out)
+      return best == INT_MAX ? val : best;
     best = std::min(best, val);
     beta = std::min(beta, best);
     if (beta <= alpha)
@@ -126,33 +155,70 @@ static int minimax(State state, int depth, int alpha, int beta, Sign me) {
 
 SearchResult search_best_move(
     const State &state, Sign me,
-    std::chrono::steady_clock::time_point /*deadline*/) {
+    std::chrono::steady_clock::time_point deadline) {
   SearchResult result;
-  auto candidates = generate_candidates(state, 2);
+  auto candidates = limit_candidates(state, me, generate_candidates(state, 2));
   if (candidates.empty()) {
     const auto &opts = state.get_opts();
-    result.move = {opts.cols / 2, opts.rows / 2};
+    const int cx = opts.cols / 2;
+    const int cy = opts.rows / 2;
+    if (is_legal(state, cx, cy)) {
+      result.move = {cx, cy};
+      return result;
+    }
+    for (int y = 0; y < opts.rows; ++y) {
+      for (int x = 0; x < opts.cols; ++x) {
+        if (is_legal(state, x, y)) {
+          result.move = {x, y};
+          return result;
+        }
+      }
+    }
     return result;
   }
+  result.move = candidates.front();
+
+  for (int depth = 1; depth <= kMaxDepth; ++depth) {
+    if (std::chrono::steady_clock::now() >= deadline)
+      break;
 
   int best_score = INT_MIN;
+    Point best_move = result.move;
+    bool depth_completed = true;
+    bool timed_out = false;
+
   const Sign side = state.get_current_player();
   for (const Point &mv : candidates) {
+      if (std::chrono::steady_clock::now() >= deadline) {
+        depth_completed = false;
+        break;
+      }
     State child = state;
     const MoveResult r = child.process_move(side, mv.x, mv.y);
     if (game::is_dq(r))
       continue;
-    const int score = (child.get_status() == Status::ENDED)
+      const int score =
+          (child.get_status() == Status::ENDED)
                           ? terminal_value(child, me)
-                          : minimax(child, kSearchDepth - 1, INT_MIN, INT_MAX, me);
+              : minimax(child, depth - 1, INT_MIN, INT_MAX, me, deadline,
+                        &timed_out);
+      if (timed_out) {
+        depth_completed = false;
+        break;
+      }
     if (score > best_score) {
       best_score = score;
-      result.move = mv;
+        best_move = mv;
     }
   }
+
+    if (depth_completed) {
+      result.move = best_move;
   result.score = best_score;
-  result.depth_reached = kSearchDepth;
+      result.depth_reached = depth;
   result.completed = true;
+    }
+  }
   return result;
 }
 
