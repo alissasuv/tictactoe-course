@@ -29,6 +29,7 @@ private:
   static std::optional<Point> find_blocking_move(const State &state, Sign me);
   static std::vector<Point> collect_battle_zone(const State &state, int radius);
   static Point fallback_move(const State &state);
+  static Point greedy_eval_move(const State &state, Sign me);
 };
 
 }; // namespace ttt::my_player
