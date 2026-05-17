@@ -1,5 +1,7 @@
 #include "my_player.hpp"
+#include "my_player_eval.hpp"
 
+#include <climits>
 #include <cstdlib>
 
 namespace ttt::my_player {
@@ -123,6 +125,27 @@ std::vector<Point> MyPlayer::collect_battle_zone(const State &state, int radius)
   return moves;
 }
 
+Point MyPlayer::greedy_eval_move(const State &state, Sign me) {
+  auto candidates = collect_battle_zone(state, 2);
+  if (candidates.empty())
+    return fallback_move(state);
+
+  int best_score = INT_MIN;
+  Point best = candidates.front();
+  for (const Point &mv : candidates) {
+    State copy = state;
+    const MoveResult r = copy.process_move(me, mv.x, mv.y);
+    if (game::is_dq(r))
+      continue;
+    const int sc = evaluate(copy, me);
+    if (sc > best_score) {
+      best_score = sc;
+      best = mv;
+    }
+  }
+  return best;
+}
+
 Point MyPlayer::fallback_move(const State &state) {
   auto zone = collect_battle_zone(state, 2);
   if (!zone.empty())
@@ -142,7 +165,7 @@ Point MyPlayer::make_move(const State &state) {
     return *mv;
   if (auto mv = find_blocking_move(state, m_sign))
     return *mv;
-  return fallback_move(state);
+  return greedy_eval_move(state, m_sign);
 }
 
 }; // namespace ttt::my_player
