@@ -1,0 +1,32 @@
+# Lab #7: only custom MyPlayer tests (no baseline / libtttcore.a in CI).
+name: CI
+
+on:
+  push:
+    branches: [dev, main, "feature/**"]
+  pull_request:
+    branches: [dev, main]
+
+jobs:
+  custom-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build tools
+        run: sudo apt-get update && sudo apt-get install -y cmake build-essential
+
+      - name: Configure
+        run: cmake -S . -B build -DBUILD_TTTCORE=SOURCE
+
+      - name: Build custom tests only
+        run: |
+          cmake --build build -j"$(nproc)" \
+            --target test_win_in_one_move test_block_threat test_move_time_limit
+
+      - name: Run custom tests
+        run: |
+          ctest --test-dir build \
+            -R "test_win_in_one_move|test_block_threat|test_move_time_limit" \
+            --output-on-failure
