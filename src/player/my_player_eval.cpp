@@ -84,6 +84,12 @@ int evaluate(const State &state, Sign me) {
       return 0;
     return -1000000;
   }
+  if (state.get_status() == Status::LAST_MOVE) {
+    if (me == Sign::O)
+      return 500;
+    return -200;
+  }
+
   const int len = state.get_opts().win_len;
   const auto &opts = state.get_opts();
   int total = 0;
