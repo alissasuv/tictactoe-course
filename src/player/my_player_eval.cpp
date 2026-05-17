@@ -48,7 +48,6 @@ static int window_score(const State &state, int x, int y, int dx, int dy,
   int opp_cnt = 0;
   int empty_cnt = 0;
   int wall_cnt = 0;
-  const Sign opp = opponent(me);
   for (int i = 0; i < len; ++i) {
     const int cx = x + i * dx;
     const int cy = y + i * dy;
@@ -85,12 +84,6 @@ int evaluate(const State &state, Sign me) {
       return 0;
     return -1000000;
   }
-  if (state.get_status() == Status::LAST_MOVE) {
-    if (me == Sign::O)
-      return 500;
-    return -200;
-  }
-
   const int len = state.get_opts().win_len;
   const auto &opts = state.get_opts();
   int total = 0;
@@ -98,6 +91,9 @@ int evaluate(const State &state, Sign me) {
 
   for (int y = 0; y < opts.rows; ++y) {
     for (int x = 0; x < opts.cols; ++x) {
+      const Sign v = state.get_value(x, y);
+      if (v != Sign::X && v != Sign::O)
+        continue;
       for (const auto &dir : dirs) {
         for (int n = 0; n < len; ++n) {
           const int sx = x - n * dir[0];
