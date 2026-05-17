@@ -12,7 +12,7 @@ endif()
 
 # NOTE: set this variable to "PREBUILT" when you downloaded prebuilt tttcore
 # library with baseline player.
-set(BUILD_TTTCORE "PREBUILT")
+set(BUILD_TTTCORE "PREBUILT" CACHE STRING "PREBUILT | SOURCE (core only) | FULL")
 
 if (BUILD_TTTCORE STREQUAL "PREBUILT")
   find_library(TTTCORE_LIB libtttcore.a PATHS libs)
@@ -53,7 +53,7 @@ set(player_src
   src/player/my_observer.cpp
 )
 add_library(tttplayer STATIC ${player_src})
-target_link_libraries(tttplayer ${TTTCORE_LIB})
+target_link_libraries(tttplayer PUBLIC ${TTTCORE_LIB})
 
 # NOTE: enable or disable ctest
 enable_testing()
