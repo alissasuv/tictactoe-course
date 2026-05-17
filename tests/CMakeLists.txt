@@ -9,6 +9,19 @@ add_executable(test_stats test_stats.cpp)
 target_link_libraries(test_stats tttplayer)
 add_test(NAME test_player_stats COMMAND ./test_stats)
 
+# Custom bot tests (lab #7)
+add_executable(test_win_in_one_move test_win_in_one_move.cpp)
+target_link_libraries(test_win_in_one_move tttplayer)
+add_test(NAME test_win_in_one_move COMMAND ./test_win_in_one_move)
+
+add_executable(test_block_threat test_block_threat.cpp)
+target_link_libraries(test_block_threat tttplayer)
+add_test(NAME test_block_threat COMMAND ./test_block_threat)
+
+add_executable(test_move_time_limit test_move_time_limit.cpp)
+target_link_libraries(test_move_time_limit tttplayer)
+add_test(NAME test_move_time_limit COMMAND ./test_move_time_limit)
+
 # Targets that require full or prebuilt tttcore
 if((BUILD_TTTCORE STREQUAL "FULL") OR (BUILD_TTTCORE STREQUAL "PREBUILT"))
   # Baseline tests
