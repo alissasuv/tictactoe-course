@@ -49,6 +49,7 @@ include_directories(src)
 set(player_src
   src/player/my_player.cpp
   src/player/my_player_eval.cpp
+  src/player/my_player_search.cpp
   src/player/my_observer.cpp
 )
 add_library(tttplayer STATIC ${player_src})

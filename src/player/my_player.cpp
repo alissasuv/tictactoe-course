@@ -1,6 +1,8 @@
 #include "my_player.hpp"
 #include "my_player_eval.hpp"
+#include "my_player_search.hpp"
 
+#include <chrono>
 #include <climits>
 #include <cstdlib>
 
@@ -8,6 +10,10 @@ namespace ttt::my_player {
 
 using game::MoveResult;
 using game::Status;
+
+namespace {
+constexpr int kCandidateRadius = 2;
+} // namespace
 
 void MyPlayer::set_sign(Sign sign) { m_sign = sign; }
 const char *MyPlayer::get_name() const { return m_name; }
@@ -81,52 +87,25 @@ std::optional<Point> MyPlayer::find_blocking_move(const State &state, Sign me) {
 }
 
 std::vector<Point> MyPlayer::collect_battle_zone(const State &state, int radius) {
+  return generate_candidates(state, radius);
+  }
+
+Point MyPlayer::fallback_move(const State &state) {
+  auto zone = collect_battle_zone(state, kCandidateRadius);
+  if (!zone.empty())
+    return zone[std::rand() % zone.size()];
   const auto &opts = state.get_opts();
-  std::vector<Point> moves;
-  bool has_stones = false;
   for (int y = 0; y < opts.rows; ++y) {
     for (int x = 0; x < opts.cols; ++x) {
-      const Sign v = state.get_value(x, y);
-      if (v == Sign::X || v == Sign::O)
-        has_stones = true;
-    }
-  }
-  if (!has_stones) {
-    const int cx = opts.cols / 2;
-    const int cy = opts.rows / 2;
-    if (is_legal(state, cx, cy))
-      moves.push_back({cx, cy});
-    return moves;
-  }
-  for (int y = 0; y < opts.rows; ++y) {
-    for (int x = 0; x < opts.cols; ++x) {
-      if (!is_legal(state, x, y))
-        continue;
-      bool near_stone = false;
-      for (int dy = -radius; dy <= radius && !near_stone; ++dy) {
-        for (int dx = -radius; dx <= radius; ++dx) {
-        if (dx == 0 && dy == 0)
-          continue;
-          const int nx = x + dx;
-          const int ny = y + dy;
-          if (nx < 0 || ny < 0 || nx >= opts.cols || ny >= opts.rows)
-            continue;
-          const Sign v = state.get_value(nx, ny);
-          if (v == Sign::X || v == Sign::O) {
-            near_stone = true;
-          break;
-        }
-      }
-    }
-      if (near_stone)
-        moves.push_back({x, y});
+      if (is_legal(state, x, y))
+        return {x, y};
   }
   }
-  return moves;
+  return {0, 0};
 }
 
 Point MyPlayer::greedy_eval_move(const State &state, Sign me) {
-  auto candidates = collect_battle_zone(state, 2);
+  auto candidates = collect_battle_zone(state, kCandidateRadius);
   if (candidates.empty())
     return fallback_move(state);
 
@@ -146,25 +125,17 @@ Point MyPlayer::greedy_eval_move(const State &state, Sign me) {
   return best;
 }
 
-Point MyPlayer::fallback_move(const State &state) {
-  auto zone = collect_battle_zone(state, 2);
-  if (!zone.empty())
-    return zone[std::rand() % zone.size()];
-  const auto &opts = state.get_opts();
-  for (int y = 0; y < opts.rows; ++y) {
-    for (int x = 0; x < opts.cols; ++x) {
-      if (is_legal(state, x, y))
-        return {x, y};
-    }
-  }
-  return {0, 0};
-}
-
 Point MyPlayer::make_move(const State &state) {
   if (auto mv = find_winning_move(state, m_sign))
     return *mv;
   if (auto mv = find_blocking_move(state, m_sign))
     return *mv;
+
+  const auto deadline = std::chrono::steady_clock::time_point::max();
+  const SearchResult search = search_best_move(state, m_sign, deadline);
+  if (search.depth_reached > 0)
+    return search.move;
+
   return greedy_eval_move(state, m_sign);
 }
 
